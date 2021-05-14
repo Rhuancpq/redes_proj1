@@ -1,0 +1,19 @@
+version: '3.9'
+
+services:
+  udp-bidirect-1:
+    container_name: udp-bidirect-1
+    build: .
+    tty: true
+    stdin_open: true
+    environment:
+      - SERVER_HOST=udp-bidirect-2
+      - TALK_PORT=5000
+  udp-bidirect-2:
+    container_name: udp-bidirect-2
+    build: .
+    environment:
+      - SERVER_HOST=udp-bidirect-1
+      - TALK_PORT=5000
+    tty: true
+    stdin_open: true
