@@ -182,8 +182,8 @@ int main(int argc, char * argv[]) {
     }
 
     while (TRUE) {
-      conversa_cliente(novo_sd, endCli);
       atende_cliente(novo_sd, endCli);
+      conversa_cliente(novo_sd, endCli);
     }
   }
 

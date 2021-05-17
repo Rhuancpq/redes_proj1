@@ -112,9 +112,23 @@ int main(int argc, char * argv[]) {
 
   handle_failure(connect_res, "Não foi possível conectar");
 
+  struct sockaddr_in local_address;
+  int local_len = sizeof(local_address);
+
+  getsockname(sd, (struct sockaddr *) &local_address, &local_len);
+
+  fprintf(
+    stdout,
+    "\n%s:%u conectado com sucesso ao servidor %s:%u ...\n",
+    inet_ntoa(local_address.sin_addr),
+    ntohs(local_address.sin_port),
+    inet_ntoa(ladoServ.sin_addr),
+    ntohs(ladoServ.sin_port)
+  );
+
   while (TRUE) {
-    atende_servidor(sd, ladoServ); 
     conversa_servidor(sd, ladoServ);
+    atende_servidor(sd, ladoServ); 
   }
 
   return 0;
