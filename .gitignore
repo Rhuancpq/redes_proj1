@@ -9,3 +9,5 @@
 
 # Unignore all dirs
 !**/Dockerfile
+
+.vscode/*

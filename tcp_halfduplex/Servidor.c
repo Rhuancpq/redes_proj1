@@ -11,17 +11,33 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <assert.h>
+#include <semaphore.h>
+#include <sys/mman.h>
 
 #define MAX_MSG 100
 #define TRUE 1
 #define FALSE 0
 #define QLEN 5
 
+static sem_t* mutex = NULL;
+
 void handle_failure(int rt, char message[]) {
   if (rt < 0) {
     fprintf(stdout, "%s\n", message);
     exit(1);
   }
+};
+
+void init_shared() {
+  // place our shared data in shared memory
+  int prot = PROT_READ | PROT_WRITE;
+  int flags = MAP_SHARED | MAP_ANONYMOUS;
+  mutex = mmap(NULL, sizeof(sem_t), prot, flags, -1, 0);
+  
+  handle_failure(mutex == MAP_FAILED ? -1 : 0, "Não conseguiu alocar memória");
+
+  sem_init(mutex, 1, 1);
 };
 
 void set_server_addr(struct sockaddr_in * serv_addr, char * addr, char * port) {
@@ -47,37 +63,6 @@ void set_server_addr(struct sockaddr_in * serv_addr, char * addr, char * port) {
   serv_addr->sin_port = htons(atoi(port));
 };
 
-int lock() {
-  FILE * F = fopen ("lock", "a");
-
-  if (F == NULL)
-    return FALSE;
-
-  fclose(F);
-  return TRUE;
-};
-
-int is_lock(){
-  FILE * F = fopen ("lock", "r");
-  int s;
-  if (F == NULL){
-    s = FALSE;
-  }else{
-    s = TRUE;
-    fclose(F);
-  }
-  return s;
-}
-
-int unlock() {
-  int status = remove("lock");
-
-  if (status < 0)
-    return FALSE;
-
-  return TRUE;
-};
-
 void atende_cliente(int descritor, struct sockaddr_in endCli) {
   int n;
   char bufin[MAX_MSG];
@@ -86,8 +71,8 @@ void atende_cliente(int descritor, struct sockaddr_in endCli) {
 
   n = recv(descritor, &bufin, sizeof(bufin), 0);
 
-  while(is_lock());
-  lock();
+  sem_wait(mutex);
+
   if (strncmp(bufin, "FIM", 3) == 0){
     fprintf(
       stdout,
@@ -98,9 +83,9 @@ void atende_cliente(int descritor, struct sockaddr_in endCli) {
 
     close(descritor);
     kill(getppid(), SIGCHLD); // vou acabar
-    unlock();
+    sem_post(mutex);
     exit(0);
-  } 
+  }
 
   fprintf(
     stdout,
@@ -109,15 +94,13 @@ void atende_cliente(int descritor, struct sockaddr_in endCli) {
     ntohs(endCli.sin_port),
     bufin
   );
-  unlock();
+  sem_post(mutex);
 };
 
 void conversa_cliente(int descritor, struct sockaddr_in endCli){
   char bufout[MAX_MSG];
 
-  while(is_lock());
-
-  lock();
+  sem_wait(mutex);
 
   fprintf(
     stdout, 
@@ -128,8 +111,7 @@ void conversa_cliente(int descritor, struct sockaddr_in endCli){
 
   fgets(bufout, MAX_MSG, stdin);
 
-  unlock();
-
+  sem_post(mutex);
 
   send(descritor, &bufout, strlen(bufout), 0);
   
@@ -139,6 +121,8 @@ void conversa_cliente(int descritor, struct sockaddr_in endCli){
 int main(int argc, char * argv[]) {
   struct sockaddr_in endServ; /* endereco do servidor   */
   int sd, novo_sd, bind_res, listen_res;
+
+  init_shared();
 
   if (argc < 2) {
     fprintf(
@@ -183,15 +167,16 @@ int main(int argc, char * argv[]) {
     handle_failure(ser, "Não foi possível criar um processo filho\n");
 
     if (ser > 0) {
-      while(is_lock());
-      lock();
+      sem_wait(mutex);
+      
       fprintf(
         stdout,
         "\n%s:%u se conectou ao servidor!\n",
         inet_ntoa(endCli.sin_addr),
         ntohs(endCli.sin_port)
       );
-      unlock();
+      
+      sem_post(mutex);
       signal(SIGCHLD, SIG_IGN); // ignora o filho que vai morrer
       continue;
     }
