@@ -20,7 +20,7 @@
 
 typedef struct Client {
   int descriptor;
-  struct sockaddr_in endCli;
+  struct sockaddr_in client_server;
 } Client;
 
 typedef struct ThreadParam {
@@ -33,12 +33,11 @@ void handle_failure(int rt, char message[]) {
     fprintf(stdout, "%s\n", message);
     exit(1);
   }
-};
+}
 
 int is_ready(int fd) {
   fd_set fdset;
   struct timeval timeout;
-  int ret;
   FD_ZERO(&fdset);
   FD_SET(fd, &fdset);
 
@@ -50,7 +49,7 @@ int is_ready(int fd) {
 
 void set_server_addr(struct sockaddr_in * serv_addr, char * addr, char * port) {
   int errcode;
-  struct addrinfo hints, *res, *result;
+  struct addrinfo hints, *result;
 
   memset(&hints, 0, sizeof (hints));
 
@@ -69,23 +68,23 @@ void set_server_addr(struct sockaddr_in * serv_addr, char * addr, char * port) {
   struct sockaddr_in * temp_addr = (struct sockaddr_in *) result->ai_addr;
   serv_addr->sin_addr = temp_addr->sin_addr; 
   serv_addr->sin_port = htons(atoi(port));
-};
+}
 
 int client_cmp(Client a, Client b) {
   int t1 = 0, t2 = 0;
-  t1 = strcmp(inet_ntoa(a.endCli.sin_addr), inet_ntoa(b.endCli.sin_addr));
-  t2 = ntohs(a.endCli.sin_port) == ntohs(b.endCli.sin_port);
+  t1 = strcmp(inet_ntoa(a.client_server.sin_addr), inet_ntoa(b.client_server.sin_addr));
+  t2 = ntohs(a.client_server.sin_port) == ntohs(b.client_server.sin_port);
   return (t1 == 0) && t2;
-};
+}
 
 void * send_msg_client(ThreadParam * param) {
   char msg[MAX_MSG];
   char port[10];
   
-  sprintf(port, "%d", ntohs(param->client->endCli.sin_port));
+  sprintf(port, "%d", ntohs(param->client->client_server.sin_port));
 
   strcat(msg, "[");
-  strcat(msg, inet_ntoa(param->client->endCli.sin_addr));
+  strcat(msg, inet_ntoa(param->client->client_server.sin_addr));
   strcat(msg, ":");
   strcat(msg, port);
   strcat(msg, "] => ");
@@ -94,14 +93,14 @@ void * send_msg_client(ThreadParam * param) {
   send(param->client->descriptor, msg, strlen(msg), 0);
 
   pthread_exit(NULL);
-};
+}
 
 void remove_client(Client * arr, int i, int n) {
   fprintf(
     stdout,
     "\nEncerrando conexao com %s:%u ...\n\n",
-    inet_ntoa(arr[i].endCli.sin_addr),
-    ntohs(arr[i].endCli.sin_port)
+    inet_ntoa(arr[i].client_server.sin_addr),
+    ntohs(arr[i].client_server.sin_port)
   );
 
   close(arr[i].descriptor);
@@ -109,11 +108,11 @@ void remove_client(Client * arr, int i, int n) {
   for (int j = i; j < n; j++){
     arr[j] = arr[j + 1];
   }
-};
+}
 
 int main(int argc, char * argv[]) {
-  struct sockaddr_in endServ; /* endereco do servidor   */
-  int sd, novo_sd, bind_res, listen_res;
+  struct sockaddr_in server_addr; /* endereco do servidor */
+  int sd, bind_res, listen_res;
   Client clients[MAX_CLIENTS];
   int clients_size = 0;
 
@@ -127,15 +126,15 @@ int main(int argc, char * argv[]) {
     exit(1);
   }
   
-  memset((char *) &endServ, 0, sizeof(endServ));
+  memset((char *) &server_addr, 0, sizeof(server_addr));
 
-  set_server_addr(&endServ, argv[1], argv[2]); 
+  set_server_addr(&server_addr, argv[1], argv[2]); 
 
   sd = socket(AF_INET, SOCK_STREAM, 0);
   
   handle_failure(sd, "Não foi possível criar o socket\n");
 
-  bind_res = bind(sd, (struct sockaddr *)&endServ, sizeof(endServ));
+  bind_res = bind(sd, (struct sockaddr *)&server_addr, sizeof(server_addr));
 
   handle_failure(bind_res, "Ligacao Falhou!\n");
 
@@ -147,15 +146,15 @@ int main(int argc, char * argv[]) {
 
   while (TRUE) {
     if (is_ready(sd)) {
-      struct sockaddr_in endCli;
-      int alen = sizeof(endCli);
-      int novo_sd = accept(sd, (struct sockaddr *) &endCli, &alen);
+      struct sockaddr_in client_server;
+      int alen = sizeof(client_server);
+      int new_sd = accept(sd, (struct sockaddr *) &client_server, &alen);
 
-      Client temp = { novo_sd, endCli };
+      Client temp = { new_sd, client_server };
 
       clients[clients_size++] = temp;
 
-      if (novo_sd < 0) {
+      if (new_sd < 0) {
         fprintf(stdout, "Falha no accept\n");
         continue;
       }
@@ -163,8 +162,8 @@ int main(int argc, char * argv[]) {
       fprintf(
         stdout,
         "\n%s:%u se conectou ao servidor!\n",
-        inet_ntoa(endCli.sin_addr),
-        ntohs(endCli.sin_port)
+        inet_ntoa(client_server.sin_addr),
+        ntohs(client_server.sin_port)
       );
     }
 
@@ -189,8 +188,8 @@ int main(int argc, char * argv[]) {
         fprintf(
           stdout,
           "\n[%s:%u] => %s\n",
-          inet_ntoa(clients[i].endCli.sin_addr),
-          ntohs(clients[i].endCli.sin_port),
+          inet_ntoa(clients[i].client_server.sin_addr),
+          ntohs(clients[i].client_server.sin_port),
           bufin
         );
 
@@ -216,4 +215,4 @@ int main(int argc, char * argv[]) {
   }
 
   return 0;
-};
+}

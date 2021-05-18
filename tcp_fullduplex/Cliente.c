@@ -25,7 +25,7 @@ void handle_failure(int rt, char message[]) {
     fprintf(stdout, "%s\n", message);
     exit(1);
   }
-};
+}
 
 void init_shared() {
   // place our shared data in shared memory
@@ -36,12 +36,11 @@ void init_shared() {
   handle_failure(mutex == MAP_FAILED ? -1 : 0, "Não conseguiu alocar memória");
 
   sem_init(mutex, 1, 1);
-};
+}
 
 int is_ready(int fd) {
   fd_set fdset;
   struct timeval timeout;
-  int ret;
   FD_ZERO(&fdset);
   FD_SET(fd, &fdset);
 
@@ -53,7 +52,7 @@ int is_ready(int fd) {
 
 void set_server_addr(struct sockaddr_in * serv_addr, char * addr, char * port) {
   int errcode;
-  struct addrinfo hints, *res, *result;
+  struct addrinfo hints, *result;
 
   memset (&hints, 0, sizeof (hints));
 
@@ -72,32 +71,31 @@ void set_server_addr(struct sockaddr_in * serv_addr, char * addr, char * port) {
   struct sockaddr_in * temp_addr = (struct sockaddr_in *) result->ai_addr;
   serv_addr->sin_addr = temp_addr->sin_addr; 
   serv_addr->sin_port = htons(atoi(port));
-};
+}
 
-void atende_servidor(int descritor, struct sockaddr_in endServ) {
-  int n;
+void answer_server(int descriptor, struct sockaddr_in server_addr) {
   char bufin[MAX_MSG];
   
   while (TRUE) {
     memset(&bufin, 0x0, sizeof(bufin));
 
-    n = recv(descritor, &bufin, sizeof(bufin), 0);
+    recv(descriptor, &bufin, sizeof(bufin), 0);
     
     sem_wait(mutex);
 
     fprintf(
       stdout,
       "\nServidor [%s:%u]:\nCliente: %s\n",
-      inet_ntoa(endServ.sin_addr),
-      ntohs(endServ.sin_port),
+      inet_ntoa(server_addr.sin_addr),
+      ntohs(server_addr.sin_port),
       bufin
     );
 
     sem_post(mutex);
   }
-};
+}
 
-void conversa_cliente(int descritor) {
+void talk_to_server(int descriptor) {
   while (TRUE) {
     char bufout[MAX_MSG];
     
@@ -112,18 +110,18 @@ void conversa_cliente(int descritor) {
 
     if (bufout[0] == 10) continue;
 
-    send(descritor, &bufout, strlen(bufout), 0);
+    send(descriptor, &bufout, strlen(bufout), 0);
     
     if (strncmp(bufout, "FIM", 3) == 0) break;
   }
 
   fprintf(stdout, "\nEncerrando conexão...\n\n");
 
-  close(descritor);
-};
+  close(descriptor);
+}
 
 int main(int argc, char * argv[]) {
-  struct sockaddr_in ladoServ;
+  struct sockaddr_in server_addr;
   char bufout[MAX_MSG];
   int sd, connect_res;
   
@@ -139,16 +137,16 @@ int main(int argc, char * argv[]) {
     exit(1);
   }
   
-  memset((char *) &ladoServ, 0, sizeof(ladoServ));
+  memset((char *) &server_addr, 0, sizeof(server_addr));
   memset((char *) &bufout, 0, sizeof(bufout));
 
-  set_server_addr(&ladoServ, argv[1], argv[2]); 
+  set_server_addr(&server_addr, argv[1], argv[2]); 
 
   sd = socket(AF_INET, SOCK_STREAM, 0);
   
   handle_failure(sd, "Não foi possível criar o socket\n");
 
-  connect_res = connect(sd, (struct sockaddr *) &ladoServ, sizeof(ladoServ));
+  connect_res = connect(sd, (struct sockaddr *) &server_addr, sizeof(server_addr));
 
   handle_failure(connect_res, "Não foi possível conectar");
 
@@ -162,8 +160,8 @@ int main(int argc, char * argv[]) {
     "\n%s:%u conectado com sucesso ao servidor %s:%u ...\n",
     inet_ntoa(local_address.sin_addr),
     ntohs(local_address.sin_port),
-    inet_ntoa(ladoServ.sin_addr),
-    ntohs(ladoServ.sin_port)
+    inet_ntoa(server_addr.sin_addr),
+    ntohs(server_addr.sin_port)
   );
 
   pid_t pid = fork();
@@ -171,12 +169,12 @@ int main(int argc, char * argv[]) {
   handle_failure(pid, "Não foi possível criar um processo filho\n");
 
   if (pid > 0) {
-    conversa_cliente(sd);
+    talk_to_server(sd);
 
     kill(pid, SIGKILL);
   } else {
-    atende_servidor(sd, ladoServ); 
+    answer_server(sd, server_addr); 
   }
 
   return 0;
-};
+}
